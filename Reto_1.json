@@ -1,0 +1,192 @@
+{
+  "name": "Reto 1 - Consultor Pokemon",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Consultar Pokemon",
+        "formDescription": "Completa los datos para procesar tu solicitud.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "pokemon",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "correo",
+              "fieldType": "email",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "n1",
+      "name": "Formulario",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "taller1-1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b=$input.first().json;const pokemon=String(b.pokemon||'').trim().toLowerCase(),correo=String(b.correo||'').trim().toLowerCase();if(!/^[a-z0-9-]+$/.test(pokemon)||!/^\\S+@[^\\s@]+\\.[^\\s@]+$/.test(correo))throw Error('Nombre o correo invalido');return [{json:{pokemon,correo}}];"
+      },
+      "id": "n2",
+      "name": "Validar consulta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://pokeapi.co/api/v2/pokemon/'+encodeURIComponent($json.pokemon) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "n3",
+      "name": "Consultar PokeAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$input.first().json;if(r.statusCode===404)return [{json:{encontrado:false,mensaje:'No se encontro ese Pokemon. Revisa el nombre e intenta de nuevo.'}}];if(r.statusCode!==200)throw Error('PokeAPI HTTP '+r.statusCode);const p=typeof r.body==='string'?JSON.parse(r.body):r.body;if(!p?.name||!Number.isInteger(p.id)||!Array.isArray(p.types)||!Array.isArray(p.abilities)||!Number.isFinite(p.height)||!Number.isFinite(p.weight))throw Error('Respuesta PokeAPI incompleta');const tipos=p.types.map(t=>t.type.name).join(', '),habilidades=p.abilities.map(a=>a.ability.name).join(', ');return [{json:{encontrado:true,nombre:p.name,id:p.id,tipos,altura_m:p.height/10,peso_kg:p.weight/10,habilidades,mensaje:'Nombre: '+p.name+'\\nID: '+p.id+'\\nTipos: '+tipos+'\\nAltura: '+p.height/10+' m\\nPeso: '+p.weight/10+' kg\\nHabilidades: '+habilidades}}];"
+      },
+      "id": "n4",
+      "name": "Organizar resultado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Consultas_Pokemon!A%3AJ:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {values:[[$now.toISO(),$('Validar consulta').first().json.correo,$('Validar consulta').first().json.pokemon,$json.encontrado?'ENCONTRADO':'NO_ENCONTRADO',$json.id||'',$json.tipos||'',$json.altura_m??'',$json.peso_kg??'',$json.habilidades||'',$json.mensaje]]} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n5",
+      "name": "Registrar consulta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Validar consulta').first().json.correo }}",
+        "subject": "Resultado de tu consulta Pokemon",
+        "emailType": "text",
+        "message": "={{ $('Organizar resultado').first().json.mensaje }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n6",
+      "name": "Enviar resumen",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        260
+      ],
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Formulario": {
+      "main": [
+        [
+          {
+            "node": "Validar consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar consulta": {
+      "main": [
+        [
+          {
+            "node": "Consultar PokeAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar PokeAPI": {
+      "main": [
+        [
+          {
+            "node": "Organizar resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Organizar resultado": {
+      "main": [
+        [
+          {
+            "node": "Registrar consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar consulta": {
+      "main": [
+        [
+          {
+            "node": "Enviar resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "active": false
+}

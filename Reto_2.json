@@ -1,0 +1,217 @@
+{
+  "name": "Reto 2 - Recordatorio de agenda",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "n1",
+      "name": "Revision periodica",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const minutos=15;if(!Number.isFinite(minutos)||minutos<=0)throw Error('Configurar ventana positiva');return [{json:{desde:$now.toISO(),hasta:$now.plus({minutes:minutos}).toISO()}}];"
+      },
+      "id": "n2",
+      "name": "Ventana",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "CONFIG_CALENDAR_ID",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "timeMin": "={{ $json.desde }}",
+        "timeMax": "={{ $json.hasta }}",
+        "options": {
+          "recurringEventHandling": "expand",
+          "showDeleted": false
+        }
+      },
+      "id": "n3",
+      "name": "Eventos",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        520,
+        0
+      ],
+      "credentials": {},
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Recordatorios!A2%3AC?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n4",
+      "name": "Recordatorios previos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ],
+      "credentials": {},
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const enviados=new Set(($input.first().json.values||[]).map(r=>r[0]));const v=$('Ventana').first().json;const desde=Date.parse(v.desde),hasta=Date.parse(v.hasta);const result=[];for(const x of $('Eventos').all()){const e=x.json;if(!e.id||e.status==='cancelled'||!e.start?.dateTime)continue;const inicio=Date.parse(e.start.dateTime);if(!Number.isFinite(inicio)||inicio<desde||inicio>=hasta)continue;const clave=e.id+'|'+e.start.dateTime;if(enviados.has(clave))continue;enviados.add(clave);const fin=e.end?.dateTime||'No disponible';const enlace=e.hangoutLink||e.conferenceData?.entryPoints?.find(p=>p.entryPointType==='video')?.uri||'';const hora=s=>new Date(s).toLocaleString('es-CO',{timeZone:'America/Bogota'});result.push({json:{clave,id:e.id,mensaje:'Reunion: '+(e.summary||'Sin titulo')+'\\nInicio: '+hora(e.start.dateTime)+'\\nFin: '+(fin==='No disponible'?fin:hora(fin))+'\\nZona: America/Bogota'+(enlace?'\\nEnlace: '+enlace:'')}});}return result;"
+      },
+      "id": "n5",
+      "name": "Reuniones proximas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "CONFIG_TELEGRAM_CHAT_ID",
+        "text": "={{ ($json.mensaje).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "n6",
+      "name": "Recordar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        260
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Recordatorios!A%3AC:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {values:[[$('Reuniones proximas').item.json.clave,$('Reuniones proximas').item.json.id,$now.toISO()]]} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n7",
+      "name": "Marcar recordatorio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        260
+      ],
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Revision periodica": {
+      "main": [
+        [
+          {
+            "node": "Ventana",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ventana": {
+      "main": [
+        [
+          {
+            "node": "Eventos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eventos": {
+      "main": [
+        [
+          {
+            "node": "Recordatorios previos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recordatorios previos": {
+      "main": [
+        [
+          {
+            "node": "Reuniones proximas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reuniones proximas": {
+      "main": [
+        [
+          {
+            "node": "Recordar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recordar": {
+      "main": [
+        [
+          {
+            "node": "Marcar recordatorio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "active": false
+}

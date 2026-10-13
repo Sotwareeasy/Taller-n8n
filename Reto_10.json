@@ -1,0 +1,404 @@
+{
+  "name": "Reto 10 - Notificacion y despacho",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "n1",
+      "name": "Entrada",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Mesa_Ayuda!A2%3AK?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n2",
+      "name": "Consultar solicitud",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "const id=$('Entrada').first().json.id;const found=($input.first().json.values||[]).map((r,i)=>({r,fila:i+2})).filter(x=>x.r[0]===id);if(found.length!==1)throw Error('Solicitud ausente o duplicada');const {r,fila}=found[0];if(r[6]==='PROCESADO')return [];if(r[6]!=='CLASIFICADO'||!['Acceso','Software','Hardware','Red','Otro'].includes(r[7])||!['Alta','Media','Baja'].includes(r[8])||!r[9])throw Error('Solicitud no clasificada correctamente');const mensaje='ID: '+r[0]+'\\nCategoria: '+r[7]+'\\nPrioridad: '+r[8]+'\\nResumen: '+r[9];return [{json:{id:r[0],correo:r[3],categoria:r[7],prioridad:r[8],resumen:r[9],fila,mensaje}}];"
+      },
+      "id": "n3",
+      "name": "Preparar despacho",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.prioridad==='Alta' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n4",
+      "name": "Prioridad alta",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "CONFIG_TELEGRAM_CHAT_ID",
+        "text": "={{ ($json.mensaje).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "n5",
+      "name": "Alerta alta",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "CONFIG_CORREO_SOPORTE",
+        "subject": "={{ 'URGENTE '+$('Preparar despacho').first().json.id }}",
+        "emailType": "text",
+        "message": "={{ $('Preparar despacho').first().json.mensaje }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n6",
+      "name": "Notificar alta",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        260
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.prioridad==='Media' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n7",
+      "name": "Prioridad media",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "CONFIG_CORREO_SOPORTE",
+        "subject": "={{ 'Soporte '+$json.id }}",
+        "emailType": "text",
+        "message": "={{ $json.mensaje }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n8",
+      "name": "Notificar media",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        520,
+        260
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.correo }}",
+        "subject": "={{ 'Solicitud registrada '+$json.id }}",
+        "emailType": "text",
+        "message": "={{ 'Tu solicitud fue registrada.\\n'+$json.mensaje }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n9",
+      "name": "Confirmar baja",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        780,
+        260
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Mesa_Ayuda!A2%3AK?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n10",
+      "name": "Releer para finalizar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        260
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "const id=$('Entrada').first().json.id;const found=($input.first().json.values||[]).map((r,i)=>({r,fila:i+2})).filter(x=>x.r[0]===id);if(found.length!==1)throw Error('Solicitud ausente o duplicada');const {r,fila}=found[0];if(r[6]==='PROCESADO')return [];if(r[6]!=='CLASIFICADO')throw Error('Estado modificado durante el despacho');const previo=$('Preparar despacho').first().json;if(r[7]!==previo.categoria||r[8]!==previo.prioridad||r[9]!==previo.resumen)throw Error('Clasificacion modificada durante el despacho');return [{json:{fila}}];"
+      },
+      "id": "n11",
+      "name": "Preparar cierre",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {valueInputOption:\"RAW\",data:[{range:'Mesa_Ayuda!G'+$json.fila,values:[['PROCESADO']]},{range:'Mesa_Ayuda!K'+$json.fila,values:[[$now.toISO()]]}]} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n12",
+      "name": "Marcar procesado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        520
+      ],
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Entrada": {
+      "main": [
+        [
+          {
+            "node": "Consultar solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar solicitud": {
+      "main": [
+        [
+          {
+            "node": "Preparar despacho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar despacho": {
+      "main": [
+        [
+          {
+            "node": "Prioridad alta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prioridad alta": {
+      "main": [
+        [
+          {
+            "node": "Alerta alta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prioridad media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alerta alta": {
+      "main": [
+        [
+          {
+            "node": "Notificar alta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar alta": {
+      "main": [
+        [
+          {
+            "node": "Releer para finalizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prioridad media": {
+      "main": [
+        [
+          {
+            "node": "Notificar media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirmar baja",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar media": {
+      "main": [
+        [
+          {
+            "node": "Releer para finalizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar baja": {
+      "main": [
+        [
+          {
+            "node": "Releer para finalizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Releer para finalizar": {
+      "main": [
+        [
+          {
+            "node": "Preparar cierre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar cierre": {
+      "main": [
+        [
+          {
+            "node": "Marcar procesado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "active": false
+}

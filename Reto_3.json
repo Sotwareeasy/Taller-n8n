@@ -1,0 +1,127 @@
+{
+  "name": "Reto 3 - Correos importantes",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": true,
+        "filters": {
+          "readStatus": "both"
+        },
+        "options": {}
+      },
+      "id": "n1",
+      "name": "Correo nuevo",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "const patron='CONFIG_PATRON_ASUNTO';if(patron.startsWith('CONFIG_'))throw Error('Configura la condicion del trainer');const re=new RegExp(patron,'i');return $input.all().flatMap((x,i)=>{const m=x.json,asunto=String(m.Subject||m.subject||'');if(!re.test(asunto))return [];const d=m.internalDate?new Date(Number(m.internalDate)):new Date(m.date||m.Date||'');if(isNaN(d))throw Error('Fecha de correo ausente o invalida');return [{json:{id:m.id,remitente:typeof m.from==='object'?m.from?.text||m.From||'':m.From||m.from||'',asunto,fecha:d.toISOString(),fragmento:String(m.snippet||m.text||'').slice(0,500)},pairedItem:{item:i}}];});"
+      },
+      "id": "n2",
+      "name": "Filtrar asunto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Correos_Importantes!A%3AE:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {values:[[$json.id,$json.remitente,$json.asunto,$json.fecha,$json.fragmento]]} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n3",
+      "name": "Registrar correo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "CONFIG_TELEGRAM_CHAT_ID",
+        "text": "={{ ('Correo importante\\nDe: '+$('Filtrar asunto').item.json.remitente+'\\nAsunto: '+$('Filtrar asunto').item.json.asunto+'\\nFecha: '+$('Filtrar asunto').item.json.fecha+'\\n'+$('Filtrar asunto').item.json.fragmento).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "n4",
+      "name": "Alertar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        780,
+        0
+      ],
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Correo nuevo": {
+      "main": [
+        [
+          {
+            "node": "Filtrar asunto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar asunto": {
+      "main": [
+        [
+          {
+            "node": "Registrar correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar correo": {
+      "main": [
+        [
+          {
+            "node": "Alertar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "active": false
+}

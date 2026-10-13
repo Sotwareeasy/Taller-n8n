@@ -1,0 +1,130 @@
+{
+  "name": "Reto 4 - Registro de reuniones",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "calendarId": {
+          "__rl": true,
+          "value": "CONFIG_CALENDAR_ID",
+          "mode": "id"
+        },
+        "triggerOn": "eventCreated",
+        "options": {}
+      },
+      "id": "n1",
+      "name": "Nueva reunion",
+      "type": "n8n-nodes-base.googleCalendarTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().flatMap((x,i)=>{const e=x.json;if(e.status==='cancelled')return [];const inicio=e.start?.dateTime,fin=e.end?.dateTime;const fecha=inicio?new Date(inicio).toLocaleDateString('en-CA',{timeZone:'America/Bogota'}):e.start?.date;if(!e.id||!fecha)throw Error('Evento sin ID o fecha');return [{json:{id:e.id,nombre:e.summary||'Sin titulo',fecha,inicio:inicio||'Todo el dia',fin:fin||('Hasta '+(e.end?.date||'')+' (fecha exclusiva)'),organizador:e.organizer?.email||e.creator?.email||'No informado',descripcion:e.description||''},pairedItem:{item:i}}];});"
+      },
+      "id": "n2",
+      "name": "Preparar evento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Reuniones!A%3AG:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {values:[[$json.id,$json.nombre,$json.fecha,$json.inicio,$json.fin,$json.organizador,$json.descripcion]]} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n3",
+      "name": "Registrar evento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "CONFIG_CORREO_AGENDA",
+        "subject": "={{ 'Evento registrado: '+$('Preparar evento').item.json.nombre }}",
+        "emailType": "text",
+        "message": "={{ 'El evento fue registrado correctamente.\\n'+JSON.stringify($('Preparar evento').item.json,null,2) }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n4",
+      "name": "Confirmar registro",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        780,
+        0
+      ],
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Nueva reunion": {
+      "main": [
+        [
+          {
+            "node": "Preparar evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar evento": {
+      "main": [
+        [
+          {
+            "node": "Registrar evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar evento": {
+      "main": [
+        [
+          {
+            "node": "Confirmar registro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "active": false
+}

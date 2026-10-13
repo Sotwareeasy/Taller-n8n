@@ -1,0 +1,203 @@
+{
+  "name": "Reto 5 - Ficha de inscripcion",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "CONFIG_SPREADSHEET_RESPUESTAS_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONFIG_GID_RESPUESTAS",
+          "mode": "id"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "id": "n1",
+      "name": "Respuesta de Forms",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((x,i)=>{const b=x.json;const f={nombre:b.Nombre,correo:b.Correo,empresa:b.Empresa,cargo:b.Cargo,actividad:b.Actividad};for(const k of Object.keys(f)){if(typeof f[k]!=='string'||!f[k].trim())throw Error('Falta '+k);f[k]=f[k].trim();}if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(f.correo))throw Error('Correo invalido');f.titulo='Ficha - '+f.nombre+' - '+f.actividad;f.texto='FICHA DE INSCRIPCION\\n\\nNombre: '+f.nombre+'\\nCorreo: '+f.correo+'\\nEmpresa: '+f.empresa+'\\nCargo: '+f.cargo+'\\nActividad: '+f.actividad+'\\nProcesada: '+$now.toISO()+'\\n';return {json:f,pairedItem:{item:i}};});"
+      },
+      "id": "n2",
+      "name": "Preparar ficha",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {name:$json.titulo,mimeType:'application/vnd.google-apps.document',parents:['CONFIG_CARPETA_FICHAS']} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n3",
+      "name": "Crear ficha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://docs.googleapis.com/v1/documents/'+$json.id+':batchUpdate' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {requests:[{insertText:{location:{index:1},text:$('Preparar ficha').item.json.texto}}]} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n4",
+      "name": "Escribir ficha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Fichas!A%3AE:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {values:[[$now.toISO(),$('Preparar ficha').item.json.nombre,$('Preparar ficha').item.json.correo,$('Preparar ficha').item.json.actividad,$('Crear ficha').item.json.id]]} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n5",
+      "name": "Registrar ficha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Preparar ficha').item.json.correo }}",
+        "subject": "={{ 'Inscripcion procesada - '+$('Preparar ficha').item.json.actividad }}",
+        "emailType": "text",
+        "message": "={{ 'Hola '+$('Preparar ficha').item.json.nombre+', tu inscripcion en '+$('Preparar ficha').item.json.actividad+' fue procesada y tu ficha fue creada.' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n6",
+      "name": "Confirmar inscripcion",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        260
+      ],
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Respuesta de Forms": {
+      "main": [
+        [
+          {
+            "node": "Preparar ficha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar ficha": {
+      "main": [
+        [
+          {
+            "node": "Crear ficha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear ficha": {
+      "main": [
+        [
+          {
+            "node": "Escribir ficha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escribir ficha": {
+      "main": [
+        [
+          {
+            "node": "Registrar ficha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar ficha": {
+      "main": [
+        [
+          {
+            "node": "Confirmar inscripcion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "active": false
+}

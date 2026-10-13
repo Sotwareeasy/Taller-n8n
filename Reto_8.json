@@ -1,0 +1,168 @@
+{
+  "name": "Reto 8 - Recepcion de solicitudes",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Mesa de ayuda",
+        "formDescription": "Completa los datos para procesar tu solicitud.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "nombre",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "correo",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "asunto",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "descripcion",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "n1",
+      "name": "Formulario",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "taller1-8"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b=$input.first().json;for(const k of ['nombre','correo','asunto','descripcion'])if(typeof b[k]!=='string'||!b[k].trim())throw Error('Falta '+k);if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(b.correo.trim()))throw Error('Correo invalido');if(b.descripcion.length>12000||b.asunto.length>500||b.nombre.length>300)throw Error('Texto demasiado largo');return [{json:{id:'SOL-'+$execution.id,fecha:$now.toISO(),nombre:b.nombre.trim(),correo:b.correo.trim().toLowerCase(),asunto:b.asunto.trim(),descripcion:b.descripcion.trim(),estado:'RECIBIDO'}}];"
+      },
+      "id": "n2",
+      "name": "Preparar solicitud",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/CONFIG_SPREADSHEET_ID/values/Mesa_Ayuda!A%3AK:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {values:[[$json.id,$json.fecha,$json.nombre,$json.correo,$json.asunto,$json.descripcion,$json.estado,'','','','']]} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "n3",
+      "name": "Guardar solicitud",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:$('Preparar solicitud').first().json}];"
+      },
+      "id": "n4",
+      "name": "Enviar datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "CONFIG_WORKFLOW_RETO_9",
+          "mode": "id"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "n5",
+      "name": "Clasificar",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Formulario": {
+      "main": [
+        [
+          {
+            "node": "Preparar solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar solicitud": {
+      "main": [
+        [
+          {
+            "node": "Guardar solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar solicitud": {
+      "main": [
+        [
+          {
+            "node": "Enviar datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar datos": {
+      "main": [
+        [
+          {
+            "node": "Clasificar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "active": false
+}
